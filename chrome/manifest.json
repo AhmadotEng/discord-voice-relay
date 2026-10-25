@@ -1,19 +1,19 @@
 {
   "manifest_version": 3,
-  "name": "Discord Voice Relay for Chrome",
-  "short_name": "Voice Relay",
-  "version": "0.1.0",
+  "name": "Discord Direct for Chrome",
+  "short_name": "Direct",
+  "version": "0.3.0",
   "minimum_chrome_version": "111",
-  "description": "Routes Discord Web voice through a user-provided TURN-over-TCP/TLS relay in Chrome and Chromium browsers.",
+  "description": "Toggle the local Discord Web voice and screen-share route from the toolbar. The native helper runs only while enabled with a Discord tab open.",
   "permissions": [
-    "storage"
+    "storage",
+    "nativeMessaging"
   ],
   "background": {
     "service_worker": "src/service-worker.js"
   },
   "action": {
-    "default_title": "Discord Voice Relay",
-    "default_popup": "popup/popup.html",
+    "default_title": "Discord Direct: Off — click to enable",
     "default_icon": {
       "16": "icons/icon16.png",
       "32": "icons/icon32.png",
@@ -49,5 +49,8 @@
       "run_at": "document_start",
       "world": "ISOLATED"
     }
+  ],
+  "host_permissions": [
+    "https://discord.com/*"
   ]
 }

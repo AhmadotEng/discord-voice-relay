@@ -3,7 +3,7 @@
 ## Supported components
 
 - **Zen:** current source build is Discord Direct for Zen 0.2.4.2, for Zen/Firefox 152 or newer. See [Zen security details](zen/SECURITY.md).
-- **Chrome:** current source build is Discord Voice Relay for Chrome 0.1.0. See the [Chrome privacy and security notes](chrome/PRIVACY.md) and its [setup guide](chrome/README.md).
+- **Chrome:** current source build is Discord Direct for Chrome 0.3.0, including its on-demand Windows Native Messaging helper. See the [Chrome privacy and security notes](chrome/PRIVACY.md) and its [setup guide](chrome/README.md).
 
 Both extensions are experimental and modify Discord Web's WebRTC behavior. Use only reviewed source and understand the component-specific network route before enabling it.
 

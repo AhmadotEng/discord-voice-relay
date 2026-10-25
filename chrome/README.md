@@ -1,71 +1,180 @@
-# Discord Voice Relay for Chrome
+# Discord Direct for Chrome
 
-This is a clean-room Chrome/Chromium Manifest V3 extension that routes **Discord Web voice media** through a user-provided encrypted TURN relay using TLS/TCP. It is the practical browser equivalent of the goal behind Discord Drover; it does not contain or redistribute Drover code or `drover-packet.bin`.
+Discord Direct is a Manifest V3 extension for Discord Web. It routes new voice
+and screen-share peer connections through a local TURN helper, then sends the
+encrypted WebRTC packets from this computer's UDP socket toward Discord. It
+does not use a third-party TURN media relay.
 
-## What you need
+This is a separate Chromium port of the Zen extension's browser approach. It
+does not include Discord Drover's Windows DLL or packet file. Drover hooks
+Discord Desktop's Winsock traffic; Discord Web uses the browser's WebRTC,
+DTLS, and SRTP path, so this extension uses a local TURN bridge instead.
 
-- Chrome or a Chromium-based browser version 111 or newer.
-- A TURN server reachable over TLS/TCP, ideally `turns:...:443?transport=tcp`.
-- A TURN client username and credential. A normal HTTP/SOCKS proxy is not a TURN server.
+## Voice and screen share
 
-The extension cannot create a relay by itself. Use a TURN service you trust, or deploy the included Coturn example on a small public server outside the network that blocks Discord voice.
+The page hook selects Discord peer connections by their Discord network
+configuration. It does not select by audio track type. A screen-share video
+track uses the same peer connection's relay-only ICE route as voice audio. The
+live hook fixture adds an outgoing video transceiver to represent screen
+sharing; it does not ask for a camera or capture a real desktop.
 
-For the quickest managed setup, see [Managed TURN setup](docs/managed-turn.md). For a self-hosted relay, see [Coturn setup](deploy/coturn/README.md).
+The extension only changes a pristine peer connection before its first offer
+or answer. If a call was already negotiated when routing was enabled, leave
+and rejoin the call manually. The extension does not click Discord controls or
+join, leave, or reconnect calls for you.
 
-## Install unpacked in Chrome
-
-1. Keep this entire `chrome` folder in a permanent location. Its `manifest.json` is at the folder root, as Chrome expects for **Load unpacked**.
-2. Open `chrome://extensions`.
-3. Turn on **Developer mode**.
-4. Select **Load unpacked** and choose this folder.
-5. Open or reload `https://discord.com/channels/@me`.
-6. Open the extension panel, enter the TURN client details, enable it, and save.
-7. Leave and rejoin the voice call. Reopen the panel; success is shown only after Chrome reports **Voice is using the relay**.
-
-Chrome keeps an unpacked extension installed while the source folder remains available. For distribution through the Chrome Web Store, package and submit this source through the Chrome Web Store developer dashboard; a ZIP is not directly installable from `chrome://extensions`.
-
-## Recommended TURN URL
-
-Use TLS on port 443 where possible:
+## What the helper does
 
 ```text
-turns:relay.example.com:443?transport=tcp
+Discord WebRTC
+    | TURN over UDP to 127.0.0.1:<temporary port>
+    v
+Discord Direct native helper
+    | local TURN handling and UDP socket
+    v
+Discord voice endpoint
 ```
 
-If the status stays at ICE checking:
+1. The extension holds Discord's first negotiation operation while it starts
+   the helper and gets a fresh route decision.
+2. The helper opens an ephemeral TURN listener bound to `127.0.0.1` and
+   creates per-run TURN credentials.
+3. Before advertising its outbound UDP mapping, the helper probes two
+   independent STUN discovery hosts. It continues only if both report the
+   same public IP and port; address-dependent mappings fail closed.
+4. Chromium receives only the local TURN server and is forced to use relay
+   candidates. The helper unwraps TURN framing and sends the still-encrypted
+   WebRTC datagrams through its UDP socket.
+5. The helper sends the two one-byte `0x00` and `0x01` prelude datagrams before
+   the first relayed peer datagram, with a 50 ms delay.
 
-1. Confirm TCP/443 reaches the TURN host.
-2. Confirm the TURN credential is current.
-3. Confirm the TURN server can relay UDP from itself to Discord's media servers.
-4. Open `chrome://webrtc-internals` before reconnecting, then verify that the selected local candidate type is `relay` and the client-to-relay protocol is TLS/TCP. The peer-facing candidate protocol can still be UDP; that is expected. Avoid sharing that page publicly because it can contain IP addresses and session details.
+The defaults are `stun:stun.cloudflare.com:3478` and
+`stun:global.stun.twilio.com:3478`. These hosts receive small mapping probes;
+they are not proxies or media relays. Discord voice and screen-share media do
+not pass through Cloudflare or Twilio in this design. The helper does not
+decrypt DTLS/SRTP media.
 
-## How it works
+## Toolbar toggle and helper lifetime
 
-Discord Web uses the browser's standard `RTCPeerConnection`. At document start, the extension wraps that constructor in the page's main JavaScript world. It targets only Discord's explicit external network configurations (`plan-b`, `unified-plan`, or `max-bundle`), replaces their ICE server list with your TURN server, and sets `iceTransportPolicy: "relay"`. Discord's no-argument internal audio loopback peer connections are deliberately left alone.
+There is no popup. Click the extension's toolbar icon to turn routing on or
+off. The icon badge shows `OFF`, `…` while waiting or starting, `ON` when the
+helper is ready, and `!` after an error.
 
-It also wraps `setConfiguration()` on targeted connections so a later Discord reconfiguration cannot silently remove the relay. Diagnostic status records only connection state, candidate type, and transport—never IPs, SDP, audio, messages, tokens, guilds, or channel IDs.
+The enabled preference is saved. The helper process follows this rule:
 
-## Security and account-policy notes
+- It starts only when routing is enabled and at least one `discord.com` tab is
+  open.
+- It stops when routing is disabled or when the last Discord tab closes or
+  navigates away from `discord.com`.
+- If routing is enabled with no Discord tab open, the extension stays armed
+  and the helper remains stopped. Opening Discord starts it.
+- Closing Chrome closes the Native Messaging pipe; the helper then stops and
+  closes its UDP sockets. If Chrome restores an open Discord tab on the next
+  launch and the toggle was left on, the helper starts for that tab.
 
-- The TURN credential is stored only in Chrome's in-memory extension session storage and clears when Chrome exits. The nonsecret URL, username, and toggle settings persist locally. Prefer short-lived credentials or a dedicated low-quota TURN account.
-- While enabled, the credential is sent into the `discord.com` main JavaScript world and handed to `RTCPeerConnection`; Discord page code can inspect it. Never enter a provider API token, Cloudflare TURN-key token, or Coturn shared secret. Turning the toggle off stops sending the stored secret to the page, but an existing call can retain its earlier configuration until you disconnect or reload.
-- The relay can see connection metadata such as your IP, Discord's media endpoint, timing, and traffic volume. WebRTC media remains encrypted in transit, but use a relay operator you trust.
-- Do not run an unauthenticated/open TURN server. Apply quotas and firewall rules.
-- The extension injects only on `https://discord.com/channels/*` and requests extension storage. It contains no analytics, remote code, proxy CA, Discord API calls, or token access. See [Privacy disclosure](PRIVACY.md).
-- The panel's success status is a convenience diagnostic, not a tamper-proof security signal, because it shares Discord's page context. Use `chrome://webrtc-internals` for an independent check.
-- This changes Discord Web's WebRTC configuration. Discord's terms restrict unauthorized client modifications, so use it at your own account-policy risk.
-- If local law or network policy restricts VoIP or circumvention, verify that this use is permitted before enabling it.
+The helper is **not** installed as a Windows service, Run key, scheduled task,
+or startup program. The installer adds only Chrome's Native Messaging host
+registration so Chrome can launch the helper on demand. An active Native
+Messaging connection keeps the helper alive; no background helper should
+remain after its extension connection closes.
 
-## Development checks
+## Install
 
-Run:
+Requirements:
+
+- Windows and Google Chrome.
+- Node.js 20 or newer. The installer records the `node.exe` path for the
+  helper.
+- The .NET 8 SDK or newer to build the small, self-contained Windows launcher
+  used by Native Messaging. The installed launcher includes its .NET runtime.
+
+1. Keep this folder at a stable path.
+2. Open `chrome://extensions`, enable **Developer mode**, and choose **Load
+   unpacked**. Select this repository's `chrome/` folder.
+3. Copy the extension ID shown on the extension card. The ID is generated by
+   Chrome for the loaded extension and must match the Native Messaging host.
+4. In PowerShell, run the installer from this folder:
+
+   ```powershell
+   .\native-host\Install-NativeHost.ps1 -ExtensionId YOUR_32_CHARACTER_EXTENSION_ID
+   ```
+
+   It copies the helper into `%LOCALAPPDATA%\DiscordDirect\NativeHost`, builds
+   the launcher, and registers the host for the current Windows user. It does
+   not start the helper.
+5. Reload the extension in `chrome://extensions`, open a Discord tab, and
+   click the toolbar icon. The badge should move from `…` to `ON`.
+6. Leave and rejoin an existing call after enabling the route.
+
+If you move or reload the unpacked extension from a different path and Chrome
+assigns a new extension ID, run the installer again with the current ID. To
+remove the Native Messaging registration, first click the extension off and
+then run:
+
+```powershell
+.\native-host\Uninstall-NativeHost.ps1 -ExtensionId YOUR_32_CHARACTER_EXTENSION_ID
+```
+
+The uninstall script removes only the host registration after verifying the
+extension ID. It does not register or manage any Windows startup process.
+
+## Limits and fail-closed behavior
+
+The local route requires outbound UDP and a stable, endpoint-independent NAT
+mapping. Blocked UDP, address-dependent NAT, inconsistent STUN probes, missing
+Native Messaging registration, or helper/socket failure prevents a protected
+route from becoming ready. While enabled, a new Discord negotiation is held
+until the local helper is ready; it will not quietly fall back to direct ICE.
+
+Changing ICE servers cannot move an already-connected peer connection to a
+new path. Reconnect voice manually after changing the toolbar toggle. Existing
+screen-share calls also need a fresh negotiation to pick up the route.
+
+## Development and checks
+
+From this folder:
 
 ```sh
-node --test tests/*.test.js
+npm test
 ```
 
-The clean-room extension code is available under the MIT License. The upstream Discord Drover repository has no top-level license, so none of its source or packet data is copied here.
+The tests cover the TURN codec and bridge, native host framing and lifecycle,
+settings and route validation, service-worker tab/toggle behavior, the page
+hook, and the isolated-world bridge. The native host test uses local UDP
+sockets and does not contact STUN or Discord.
 
-## Why Drover itself cannot be loaded
+The Windows live test launches a disposable browser profile and a temporary
+extension identity, registers the Native Messaging host for that identity,
+and removes the registration on exit:
 
-Discord Drover is a Windows `version.dll` that is loaded beside `Discord.exe`; it hooks WinSock and prepends special datagrams to Discord Desktop's native 74-byte UDP discovery packet. Chrome extensions cannot access raw UDP packets, and Discord Web uses browser-managed ICE/DTLS/SRTP instead of that desktop discovery protocol. Reproducing Drover's exact packet trick would require an OS-level packet filter or modified browser, not an extension.
+```sh
+npm run test:live-hook
+```
+
+The test auto-detects Helium under `%LOCALAPPDATA%` or Chrome under Program
+Files. Set `HELIUM_BIN` or `CHROME_BIN` to override the browser executable.
+This test needs Node.js 20+, the .NET 8 SDK or newer, and internet
+access for the two STUN mapping probes. Its video transceiver models the
+screen-share media section; it does not capture a desktop or test a real
+Discord account.
+
+## Project layout
+
+- `src/page-hook.js` — Discord MAIN-world connection hook and route checks.
+- `src/bridge.js` — isolated bridge between Discord's page hook and extension.
+- `src/background.js` — toolbar toggle, Discord-tab lifecycle and route state.
+- `src/native-client.js` — extension side of the Native Messaging protocol.
+- `src/turn-server.js` — local TURN implementation, executed by the helper.
+- `native-host/host.cjs` — Native Messaging command and framing loop.
+- `native-host/node-sockets.cjs` — Node UDP socket adapter for the TURN code.
+- `native-host/launcher/` — small Windows executable that starts Node and
+  forwards Native Messaging standard input/output.
+- `native-host/Install-NativeHost.ps1` and
+  `native-host/Uninstall-NativeHost.ps1` — current-user Chrome host
+  registration.
+- `lib/turn-codec.js` and `lib/mapping-policy.js` — STUN/TURN framing and
+  mapping consensus.
+
+Released under the MIT License. This independent project is not affiliated
+with Discord, Discord Drover or its author, Chrome, Zen Browser, Cloudflare, or
+Twilio.

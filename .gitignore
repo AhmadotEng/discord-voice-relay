@@ -8,3 +8,5 @@ dist/
 .env
 .env.*
 !.env.example
+**/native-host/launcher/bin/
+**/native-host/launcher/obj/

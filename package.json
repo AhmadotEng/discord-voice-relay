@@ -4,7 +4,8 @@
   "scripts": {
     "test": "npm run test:zen && npm run test:chrome",
     "test:zen": "npm --prefix zen test",
-    "test:chrome": "node --test chrome/tests/*.test.js",
+    "test:chrome": "npm --prefix chrome test",
+    "test:chrome:live-hook": "npm --prefix chrome run test:live-hook",
     "build:zen": "npm --prefix zen run build"
   },
   "engines": {

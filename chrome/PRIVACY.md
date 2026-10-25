@@ -1,18 +1,53 @@
 # Privacy disclosure
 
-Discord Voice Relay for Chrome has no developer-operated service, analytics, advertising, or telemetry. It does not read Discord tokens, text messages, guilds, contacts, or decoded call audio.
+Discord Direct for Chrome has no developer-operated service, analytics,
+advertising, or telemetry. It does not read Discord tokens, chat messages,
+guilds, contacts, or decoded call audio.
 
-When you explicitly enable the relay, the extension supplies the TURN URL, username, and credential you entered to `discord.com`'s WebRTC context. Chrome then transmits that authentication information to your chosen TURN server and routes encrypted Discord call traffic through that server. A Chrome Web Store listing should disclose this handling of authentication information and personal communications in its Privacy practices form.
+## What runs locally
 
-## Where data goes
+- The extension injects its WebRTC hook only on `https://discord.com/channels/*`
+  and uses Chrome storage for the enabled toggle and STUN discovery host list.
+- When enabled with a Discord tab open, Chrome launches a Native Messaging
+  helper as a child process. The helper runs the local TURN server and opens
+  UDP sockets. It is not installed as a Windows service, startup program,
+  scheduled task, or Run-key application.
+- The TURN listener is bound to `127.0.0.1` on an ephemeral port and uses
+  fresh credentials for each start. The helper stops when the extension turns
+  routing off, the last Discord tab closes or leaves `discord.com`, or Chrome
+  closes the Native Messaging connection.
+- The helper sends small STUN mapping probes to the two configured discovery
+  hosts. Those hosts see the computer's public IP address and probe timing.
+  They do not relay Discord voice or screen-share media.
+- Discord sees the helper's outbound UDP socket as the peer. The helper
+  forwards encrypted WebRTC datagrams but does not decrypt DTLS/SRTP media.
 
-- The TURN credential is kept only in Chrome's in-memory extension session storage and clears when Chrome exits. The URL, username, toggle state, and disclosure acknowledgment remain in local extension storage until you change them or remove the extension.
-- While enabled, page scripts on `https://discord.com` can technically inspect the TURN client credential through the page's WebRTC configuration. Use a short-lived client credential or a dedicated, tightly limited Coturn account—never a provider API token or shared credential-minting secret.
-- The chosen TURN operator can observe network metadata such as your IP address, Discord's media endpoint, timing, and traffic volume. Discord/WebRTC media remains encrypted in transit, but use a relay operator you trust.
-- When the toggle is off, the bridge does not send the stored username or credential into the page. An already-open relayed peer connection can retain its earlier WebRTC configuration until you disconnect or reload Discord.
+## Data in extension and helper memory
+
+The helper receives only validated STUN hostnames from the extension. For each
+active TURN allocation it temporarily holds the local client endpoint, a
+peer endpoint, ephemeral TURN credentials, and packet-routing state in memory.
+Those values are needed to forward packets and are discarded when the helper
+stops. The implementation does not write SDP, candidate addresses, Discord
+IDs, messages, tokens, or media to disk or diagnostic logs.
+
+The page hook reports bounded status data such as connection state, candidate
+type/protocol, and aggregate packet counters. Candidate IP addresses are not
+included in page status. The live TURN credential is passed to Discord's
+WebRTC configuration while the route is enabled; scripts in the Discord page
+can inspect their own WebRTC configuration. The credential is generated for
+the loopback listener and is valid only for that helper run.
 
 ## Your controls
 
-Disable the toggle and reconnect Discord voice to stop using the relay. Clear the saved fields to remove the credential from extension storage, or remove the extension in `chrome://extensions` to delete its local storage.
+Click the toolbar icon to turn routing off. This closes the extension's
+Native Messaging port and stops the helper. An already-connected peer
+connection may keep its old TURN configuration until the call is reconnected;
+the helper itself stops immediately. Remove the extension and run
+`native-host/Uninstall-NativeHost.ps1` with its extension ID to unregister the
+host. The installer does not create any Windows startup entry.
 
-The popup's status is a convenience diagnostic, not a security boundary: code running on the Discord page shares the main-world WebRTC context. For an independent check, inspect the selected candidate in `chrome://webrtc-internals` and look for candidate type `relay` with a TLS/TCP client-to-relay connection.
+The badge and page status are convenience diagnostics, not a security
+boundary. Discord's main JavaScript world owns the WebRTC context. For an
+independent transport check, inspect `chrome://webrtc-internals` and verify
+that the selected local candidate is `relay`.
