@@ -1,10 +1,11 @@
 {
-  "name": "discord-direct-zen",
+  "name": "discord-voice-relay-monorepo",
   "private": true,
-  "version": "0.2.4.2",
   "scripts": {
-    "test": "node --test tests/*.test.cjs",
-    "build": "./scripts/build-xpi.sh"
+    "test": "npm run test:zen && npm run test:chrome",
+    "test:zen": "npm --prefix zen test",
+    "test:chrome": "node --test chrome/tests/*.test.js",
+    "build:zen": "npm --prefix zen run build"
   },
   "engines": {
     "node": ">=20"

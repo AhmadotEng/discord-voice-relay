@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Discord Voice Relay</title>
+    <link rel="stylesheet" href="popup.css">
+  </head>
+  <body>
+    <main>
+      <header>
+        <div class="logo" aria-hidden="true">↗</div>
+        <div>
+          <h1>Discord Voice Relay</h1>
+          <p>Chrome / Chromium</p>
+        </div>
+        <label class="switch" title="Enable for new Discord voice connections">
+          <input id="enabled" type="checkbox">
+          <span></span>
+        </label>
+      </header>
+
+      <section class="status-card" aria-live="polite">
+        <span id="status-dot" class="dot idle"></span>
+        <div>
+          <strong id="status-title">Checking Discord tab…</strong>
+          <p id="status-detail">Open discord.com/channels/@me in this tab.</p>
+        </div>
+      </section>
+
+      <form id="settings-form">
+        <label for="turn-urls">Encrypted TURN URL</label>
+        <textarea id="turn-urls" rows="3" spellcheck="false" placeholder="turns:relay.example.com:443?transport=tcp"></textarea>
+        <p class="hint">One URL per line. Port 443 over <code>turns:</code> is usually the most firewall-friendly.</p>
+
+        <div class="two-columns">
+          <label>
+            Username
+            <input id="turn-username" type="text" autocomplete="off">
+          </label>
+          <label>
+            Credential
+            <input id="turn-credential" type="password" autocomplete="off">
+          </label>
+        </div>
+
+        <label class="check-row">
+          <input id="tcp-only" type="checkbox" checked disabled>
+          <span>TLS/TCP relay URLs only (required)</span>
+        </label>
+
+        <label class="check-row disclosure-row">
+          <input id="disclosure-accepted" type="checkbox">
+          <span>I understand that the client credential is exposed to Discord page code and encrypted call traffic passes through my chosen TURN operator.</span>
+        </label>
+
+        <div id="validation" class="validation" hidden></div>
+        <button id="save" type="submit">Save and reconnect voice</button>
+      </form>
+
+      <footer>
+        <p>The credential is session-only and clears when Chrome exits. It is supplied to discord.com for WebRTC while enabled.</p>
+      </footer>
+    </main>
+    <script src="../src/relay-config.js"></script>
+    <script src="popup.js"></script>
+  </body>
+</html>

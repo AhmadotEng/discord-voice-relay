@@ -1,0 +1,12 @@
+{
+  "name": "discord-direct-zen",
+  "private": true,
+  "version": "0.2.4.2",
+  "scripts": {
+    "test": "node --test tests/*.test.cjs",
+    "build": "./scripts/build-xpi.sh"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

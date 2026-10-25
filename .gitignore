@@ -5,3 +5,6 @@ coverage/
 *.xpi
 *.zip
 dist/
+.env
+.env.*
+!.env.example
